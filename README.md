@@ -144,12 +144,22 @@ Rust compilation is a miserable way to find out.
 <details>
 <summary><b>macOS</b></summary>
 
+Download the macOS installer from [nodejs.org](https://nodejs.org) and run it.
+That needs no package manager, which matters on a clean machine.
+
+With Homebrew, if you have it: `brew install node`.
+
+Entirely from the terminal, no Homebrew:
+
 ```sh
-brew install node
+VER=$(curl -fsSL https://nodejs.org/dist/index.json \
+      | python3 -c "import json,sys;print(next(r['version'] for r in json.load(sys.stdin) if r['lts']))")
+curl -fsSLO "https://nodejs.org/dist/$VER/node-$VER.pkg"
+sudo installer -pkg "node-$VER.pkg" -target /
 ```
 
-Or download an installer from [nodejs.org](https://nodejs.org). There are no
-other extra packages on macOS.
+The `.pkg` is universal — one file for both Apple silicon and Intel. There are
+no other extra packages on macOS.
 </details>
 
 <details>
