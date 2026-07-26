@@ -183,6 +183,61 @@ pub fn discover_claude_dirs(extra: &[PathBuf]) -> Discovery {
     out
 }
 
+/// Resolve a path to one canonical spelling, so two of them can be compared.
+///
+/// Three things make raw path strings unsafe to compare:
+///
+/// - **Symlinks.** `git rev-parse --show-toplevel` always returns a fully
+///   resolved path, but a transcript records whatever string the session used.
+///   On macOS `/tmp` is a symlink to `/private/tmp`, so a session working under
+///   `/tmp` produces files that share no prefix with their own repo root.
+/// - **Windows verbatim prefixes.** `canonicalize` returns `\\?\C:\…` there,
+///   while git returns `C:/…`. Canonicalising alone would swap one mismatch
+///   for another, so the prefix is stripped.
+/// - **Separators.** Git reports forward slashes on Windows; the filesystem
+///   reports backslashes.
+///
+/// Everything that compares a file against a project root must pass both sides
+/// through here first. Unresolvable paths are returned unchanged, which is
+/// normal for a file that was edited and later deleted.
+pub fn normalize(path: &str) -> String {
+    let resolved = std::fs::canonicalize(path)
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| path.to_string());
+
+    #[cfg(windows)]
+    {
+        // `\\?\C:\x` -> `C:\x`, and UNC `\\?\UNC\srv\share` -> `\\srv\share`.
+        let stripped = resolved
+            .strip_prefix(r"\\?\UNC\")
+            .map(|rest| format!(r"\\{rest}"))
+            .or_else(|| resolved.strip_prefix(r"\\?\").map(str::to_string))
+            .unwrap_or(resolved);
+        stripped.replace('/', "\\")
+    }
+    #[cfg(not(windows))]
+    {
+        resolved
+    }
+}
+
+/// Is `file` inside `dir`?
+///
+/// Compares path *components* rather than string prefixes, so `/a/bc` is not
+/// treated as living inside `/a/b`. Both sides should already be `normalize`d.
+pub fn is_inside(file: &str, dir: &str) -> bool {
+    Path::new(file).starts_with(Path::new(dir))
+}
+
+/// `file` relative to `dir`, or `None` when it is not inside it.
+pub fn relative_within(file: &str, dir: &str) -> Option<String> {
+    Path::new(file)
+        .strip_prefix(Path::new(dir))
+        .ok()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .filter(|s| !s.is_empty())
+}
+
 /// Probe only the given paths, skipping every built-in candidate.
 ///
 /// Backs `only_configured_roots`.
@@ -255,6 +310,34 @@ mod tests {
     fn project_name_is_last_component() {
         assert_eq!(project_name("/a/b/ccmon"), "ccmon");
         assert_eq!(project_name("/"), "/");
+    }
+
+    #[test]
+    fn containment_compares_components_not_string_prefixes() {
+        // The bug a string prefix would introduce: a sibling directory whose
+        // name merely starts with the project's name would swallow its files.
+        assert!(is_inside("/a/b/src/x.ts", "/a/b"));
+        assert!(!is_inside("/a/bc/src/x.ts", "/a/b"));
+        assert!(!is_inside("/other/x.ts", "/a/b"));
+        assert!(is_inside("/a/b", "/a/b"), "a project contains itself");
+    }
+
+    #[test]
+    fn relative_within_strips_the_project_root() {
+        assert_eq!(
+            relative_within("/a/b/src/x.ts", "/a/b").as_deref(),
+            Some("src/x.ts")
+        );
+        // Not inside, and the root itself, both yield nothing to render.
+        assert_eq!(relative_within("/a/bc/x.ts", "/a/b"), None);
+        assert_eq!(relative_within("/a/b", "/a/b"), None);
+    }
+
+    #[test]
+    fn normalize_leaves_an_unresolvable_path_alone() {
+        // Edited then deleted is normal; it must not vanish from the report.
+        let missing = "/definitely/not/here/deleted.rs";
+        assert_eq!(normalize(missing), missing);
     }
 
     #[test]

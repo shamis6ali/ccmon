@@ -150,10 +150,12 @@ pub fn build(views: &[SessionView], cfg: &Config, opts: &ReportOptions) -> Repor
                 })
                 .collect();
 
+            // Component-wise, not a string prefix: `/a/bc` does not live in
+            // `/a/b`, and on Windows the two sides disagree about separators.
             let project_files: Vec<&FileEdit> = view
                 .files
                 .iter()
-                .filter(|f| f.path.starts_with(&project_path))
+                .filter(|f| crate::paths::is_inside(&f.path, &project_path))
                 .collect();
             // Files only land outside every repo when the fallback cwd row is
             // in play; then the session's whole file list is the right answer.
@@ -363,10 +365,7 @@ fn short_sha(sha: &str) -> String {
 }
 
 fn relative_to(path: &str, project: &str) -> String {
-    path.strip_prefix(project)
-        .map(|p| p.trim_start_matches('/').to_string())
-        .filter(|p| !p.is_empty())
-        .unwrap_or_else(|| abbreviate_home(path))
+    crate::paths::relative_within(path, project).unwrap_or_else(|| abbreviate_home(path))
 }
 
 fn plural(n: usize, noun: &str) -> String {

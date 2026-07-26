@@ -203,24 +203,6 @@ fn scan_transcripts(
     Ok(())
 }
 
-/// Resolve a path the way git reports one, so the two can be compared.
-///
-/// `git rev-parse --show-toplevel` always returns a fully resolved path, but a
-/// transcript records whatever string the session was using. On macOS `/tmp` is
-/// a symlink to `/private/tmp`, so a session working under `/tmp` produces file
-/// paths that do not share a prefix with their own repo root. Everything that
-/// matches files to projects then silently misses: the report shows absolute
-/// paths instead of relative ones, and a session spanning several repos can
-/// have its files attributed to the wrong one.
-///
-/// Falls back to the original string when the file no longer exists, which is
-/// normal for a file that was edited and later deleted.
-fn canonical_path(path: &str) -> String {
-    std::fs::canonicalize(path)
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| path.to_string())
-}
-
 /// Every `.jsonl` beneath `dir`, at any depth.
 fn collect_jsonl(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -311,7 +293,7 @@ fn apply_transcript(
          ON CONFLICT(session_id, path) DO UPDATE SET edits = max(edits, excluded.edits)",
     )?;
     for (path, edits) in &parsed.files {
-        stmt.execute(params![session_id, canonical_path(path), edits])?;
+        stmt.execute(params![session_id, crate::paths::normalize(path), edits])?;
     }
     Ok(())
 }
@@ -627,7 +609,7 @@ fn resolve_session_projects(conn: &Connection, cfg: &Config) -> Result<()> {
         for f in &files {
             let dir = Path::new(&f.path).parent().unwrap_or(Path::new("/"));
             if let Some(root) = git::repo_root(dir, cfg.git_timeout_secs) {
-                let root = root.display().to_string();
+                let root = crate::paths::normalize(&root.display().to_string());
                 if !cfg.is_excluded(&root) {
                     *counts.entry(root).or_insert(0) += f.edits;
                 }
@@ -851,7 +833,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn file_paths_are_resolved_the_way_git_reports_them() {
+    fn file_paths_are_normalised_for_comparison() {
         // A session working under a symlinked directory records paths that do
         // not share a prefix with its own repo root, so every file-to-project
         // match silently misses. macOS `/tmp` -> `/private/tmp` is the common
@@ -862,14 +844,19 @@ mod tests {
         std::fs::create_dir_all(real.join("src")).unwrap();
         std::fs::write(real.join("src").join("cart.ts"), "x").unwrap();
 
-        let link = tmp.path().join("link");
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let link = {
+            let link = tmp.path().join("link");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            link
+        };
+        // No symlink to build on Windows; the normaliser still has to strip
+        // the verbatim prefix, which is what this exercises there.
         #[cfg(not(unix))]
         let link = real.clone();
 
         let via_link = link.join("src").join("cart.ts");
-        let resolved = canonical_path(via_link.to_str().unwrap());
+        let resolved = crate::paths::normalize(via_link.to_str().unwrap());
 
         assert!(
             resolved.starts_with(std::fs::canonicalize(&real).unwrap().to_str().unwrap()),
@@ -881,7 +868,7 @@ mod tests {
     fn a_missing_file_keeps_the_path_it_was_recorded_with() {
         // Edited then deleted is normal; it must not vanish from the report.
         let p = "/definitely/not/here/deleted.rs";
-        assert_eq!(canonical_path(p), p);
+        assert_eq!(crate::paths::normalize(p), p);
     }
 
     #[test]
