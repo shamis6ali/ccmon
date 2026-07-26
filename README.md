@@ -137,31 +137,67 @@ discovered and warns if Claude Code's cleanup is about to eat your history.
 
 ### 3. Build the desktop app (optional)
 
-Needs **Node 18+** and the Tauri CLI on top of the above.
+The app needs **Node 18+** on top of everything above. Install it *first* — the
+build is a long one and failing at the frontend step after several minutes of
+Rust compilation is a miserable way to find out.
 
 <details>
-<summary><b>Extra Linux packages for the app</b></summary>
+<summary><b>macOS</b></summary>
+
+```sh
+brew install node
+```
+
+Or download an installer from [nodejs.org](https://nodejs.org). There are no
+other extra packages on macOS.
+</details>
+
+<details>
+<summary><b>Linux (Debian/Ubuntu)</b></summary>
 
 The app links GTK and WebKit, which the CLI does not:
 
 ```sh
-sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
-                        librsvg2-dev patchelf
+sudo apt-get install -y nodejs npm libwebkit2gtk-4.1-dev \
+                        libappindicator3-dev librsvg2-dev patchelf
 ```
+
+If your distro's `nodejs` is older than 18, use [nodesource](https://github.com/nodesource/distributions)
+or [nvm](https://github.com/nvm-sh/nvm) instead.
 </details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+Install Node from [nodejs.org](https://nodejs.org). WebView2 ships with Windows
+11 and current Windows 10; on anything older, install the
+[Evergreen Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+</details>
+
+Check both are present before starting — if either prints nothing, go back:
+
+```sh
+node --version    # v18 or newer
+npm --version
+```
+
+Then, **from the repository root**:
 
 ```sh
 cargo install tauri-cli --version "^2" --locked   # provides `cargo tauri`
-cd ui && npm install && cd ..
-
-cd crates/ccmon-app
+npm --prefix ui install
 cargo tauri build --bundles app
 ```
 
-The bundle lands in `target/release/bundle/`. On macOS that is
+The bundle lands in `target/release/bundle/` — on macOS,
 `bundle/macos/ccmon.app`.
 
-For a dev build with hot reload, run `cargo tauri dev` from `crates/ccmon-app`.
+For a dev build with hot reload, run `cargo tauri dev` from the repository root.
+
+> Every command here runs from the repository root. `cargo tauri` locates the
+> app by searching subfolders for `tauri.conf.json`, so there is no need to
+> `cd` into the crate — and if you do end up somewhere else, it fails with
+> *"Couldn't recognize the current folder as a Tauri project"*.
 
 #### First launch
 
