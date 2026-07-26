@@ -223,6 +223,21 @@ It launches **straight to the tray with no window and no Dock icon** — that is
 deliberate, since the problem being solved is window sprawl. Click the tray
 icon and choose **Open ccmon** to get the window.
 
+### Trying it without Claude Code data
+
+To exercise ccmon on a fresh machine — a VM, a container, someone else's
+laptop — generate a throwaway fixture instead of copying real transcripts
+around:
+
+```sh
+./scripts/demo-fixture.sh
+```
+
+It writes invented sessions covering the states worth seeing (blocked on a
+permission prompt, working, finished with a dirty worktree), backed by a real
+git repo, and prints the one environment variable that points ccmon at it. Your
+own data is never read.
+
 ### Working on the UI
 
 The interface can be built and reviewed without compiling the Rust side at all.

@@ -80,6 +80,13 @@ of them needs a very good argument.
 - New behaviour needs a test. Bug fixes need a test that fails without the fix.
 - `cargo fmt` and clippy with `-D warnings` both gate CI.
 
+## Test data
+
+`./scripts/demo-fixture.sh` builds a throwaway Claude Code tree — sessions in
+several states, plus a real git repo with real commits — and prints how to
+point ccmon at it without touching your own data. Use that rather than copying
+your `~/.claude` anywhere.
+
 ## Never commit
 
 - Real transcript content, real prompts, real client or project names. Test and

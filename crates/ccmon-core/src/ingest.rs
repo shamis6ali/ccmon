@@ -203,6 +203,24 @@ fn scan_transcripts(
     Ok(())
 }
 
+/// Resolve a path the way git reports one, so the two can be compared.
+///
+/// `git rev-parse --show-toplevel` always returns a fully resolved path, but a
+/// transcript records whatever string the session was using. On macOS `/tmp` is
+/// a symlink to `/private/tmp`, so a session working under `/tmp` produces file
+/// paths that do not share a prefix with their own repo root. Everything that
+/// matches files to projects then silently misses: the report shows absolute
+/// paths instead of relative ones, and a session spanning several repos can
+/// have its files attributed to the wrong one.
+///
+/// Falls back to the original string when the file no longer exists, which is
+/// normal for a file that was edited and later deleted.
+fn canonical_path(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| path.to_string())
+}
+
 /// Every `.jsonl` beneath `dir`, at any depth.
 fn collect_jsonl(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -293,7 +311,7 @@ fn apply_transcript(
          ON CONFLICT(session_id, path) DO UPDATE SET edits = max(edits, excluded.edits)",
     )?;
     for (path, edits) in &parsed.files {
-        stmt.execute(params![session_id, path, edits])?;
+        stmt.execute(params![session_id, canonical_path(path), edits])?;
     }
     Ok(())
 }
@@ -831,6 +849,40 @@ pub fn ticket_keys(text: &str) -> HashSet<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_paths_are_resolved_the_way_git_reports_them() {
+        // A session working under a symlinked directory records paths that do
+        // not share a prefix with its own repo root, so every file-to-project
+        // match silently misses. macOS `/tmp` -> `/private/tmp` is the common
+        // case; this builds an explicit symlink so the test means the same
+        // thing everywhere.
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real");
+        std::fs::create_dir_all(real.join("src")).unwrap();
+        std::fs::write(real.join("src").join("cart.ts"), "x").unwrap();
+
+        let link = tmp.path().join("link");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        #[cfg(not(unix))]
+        let link = real.clone();
+
+        let via_link = link.join("src").join("cart.ts");
+        let resolved = canonical_path(via_link.to_str().unwrap());
+
+        assert!(
+            resolved.starts_with(std::fs::canonicalize(&real).unwrap().to_str().unwrap()),
+            "resolved {resolved} should sit under the real repo root"
+        );
+    }
+
+    #[test]
+    fn a_missing_file_keeps_the_path_it_was_recorded_with() {
+        // Edited then deleted is normal; it must not vanish from the report.
+        let p = "/definitely/not/here/deleted.rs";
+        assert_eq!(canonical_path(p), p);
+    }
 
     #[test]
     fn ticket_keys_extracts_real_keys() {
