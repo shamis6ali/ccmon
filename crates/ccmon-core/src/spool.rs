@@ -116,23 +116,39 @@ pub fn rotate_if_needed(primary: &Path, max_bytes: u64) -> Result<bool> {
 /// Stable-enough identity for a spool file across rotations.
 fn file_identity(path: &Path) -> Option<String> {
     let meta = std::fs::metadata(path).ok()?;
+    let _ = &meta;
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
         Some(format!("ino:{}", meta.ino()))
     }
-    #[cfg(windows)]
+
+    // Not Unix: identify the file by its first line instead.
+    //
+    // The obvious Windows answer, creation time, is wrong. NTFS *file system
+    // tunneling* gives a newly created file the creation time of a file that
+    // was renamed out of the way moments earlier — which is exactly what
+    // rotation does. The rotated file and its replacement then share one
+    // identity, clobber each other's stored offset, and the whole spool is
+    // re-ingested. (`file_index` would be ideal but is still unstable.)
+    //
+    // A spool's first line never changes once written, and every event carries
+    // a timestamp and session id, so it distinguishes files reliably and
+    // survives the rename.
+    #[cfg(not(unix))]
     {
-        use std::os::windows::fs::MetadataExt;
-        // `file_index` is still unstable, so creation time is the best stable
-        // identity available. Rotation renames the file without recreating it,
-        // so the creation time follows the content, which is what we need.
-        Some(format!("ctime:{}", meta.creation_time()))
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        let _ = meta;
-        Some(format!("path:{}", path.display()))
+        use std::io::Read;
+        let mut file = std::fs::File::open(path).ok()?;
+        let mut buf = [0u8; 4096];
+        let read = file.read(&mut buf).ok()?;
+        let line_end = buf[..read].iter().position(|b| *b == b'\n')?;
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in &buf[..line_end] {
+            hash ^= *b as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        Some(format!("line0:{hash:016x}"))
     }
 }
 
