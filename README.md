@@ -65,26 +65,123 @@ tickets. That keeps it dependency-free and offline.
 
 ## Install
 
-Requires Rust 1.77.2+ (Tauri 2 sets the floor). The desktop app also needs
-Node 18+ to build its frontend.
+There are no prebuilt binaries yet, so this is a build from source.
+
+**The CLI is the whole tool.** It gives you live triage and the work report on
+its own. The desktop app is optional and needs more toolchain, so install the
+CLI first and stop there if that is all you want.
+
+### 1. Prerequisites
+
+Rust 1.77.2 or newer, on every platform:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Then whatever your OS needs to link a binary:
+
+<details>
+<summary><b>macOS</b></summary>
+
+```sh
+xcode-select --install     # Apple's linker and headers
+```
+</details>
+
+<details>
+<summary><b>Linux (Debian/Ubuntu)</b></summary>
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config libssl-dev git
+```
+
+For `ccmon report --copy` you also need a clipboard tool — `wl-clipboard`,
+`xclip`, or `xsel`. Without one, `--copy` reports which commands it tried;
+everything else works.
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+Install the **Visual Studio Build Tools** with the "Desktop development with
+C++" workload — rustup will prompt you if they are missing. Git for Windows
+provides `git`, which ccmon shells out to.
+</details>
+
+### 2. Build and install the CLI
 
 ```sh
 git clone https://github.com/shamis6ali/ccmon
 cd ccmon
-
-# CLI
-cargo build --release          # -> target/release/ccmon
-
-# Desktop app
-cd ui && npm install && cd ..
-cargo tauri build --bundles app   # run from crates/ccmon-app
+cargo install --path crates/ccmon-cli --locked
 ```
+
+That puts `ccmon` in `~/.cargo/bin`, which rustup adds to your `PATH`. Open a
+new shell, then:
+
+```sh
+ccmon --version
+ccmon doctor      # what it found, and whether your transcripts are being deleted
+ccmon reindex     # build the index from transcripts already on disk
+ccmon ls          # live triage
+ccmon report      # this week's work
+```
+
+`ccmon doctor` is the right first command: it prints every path ccmon
+discovered and warns if Claude Code's cleanup is about to eat your history.
+
+> Prefer not to install onto your `PATH`? `cargo build --release` leaves the
+> binary at `target/release/ccmon` and you can run it from there.
+
+### 3. Build the desktop app (optional)
+
+Needs **Node 18+** and the Tauri CLI on top of the above.
+
+<details>
+<summary><b>Extra Linux packages for the app</b></summary>
+
+The app links GTK and WebKit, which the CLI does not:
+
+```sh
+sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+                        librsvg2-dev patchelf
+```
+</details>
+
+```sh
+cargo install tauri-cli --version "^2" --locked   # provides `cargo tauri`
+cd ui && npm install && cd ..
+
+cd crates/ccmon-app
+cargo tauri build --bundles app
+```
+
+The bundle lands in `target/release/bundle/`. On macOS that is
+`bundle/macos/ccmon.app`.
+
+For a dev build with hot reload, run `cargo tauri dev` from `crates/ccmon-app`.
+
+#### First launch
+
+The app is **unsigned** — no code-signing certificate, no notarisation — so
+your OS will object the first time:
+
+- **macOS**: right-click the `.app` → Open → Open. Or
+  `xattr -d com.apple.quarantine /path/to/ccmon.app`.
+- **Windows**: SmartScreen → More info → Run anyway.
+- **Linux**: `chmod +x` the AppImage.
+
+It launches **straight to the tray with no window and no Dock icon** — that is
+deliberate, since the problem being solved is window sprawl. Click the tray
+icon and choose **Open ccmon** to get the window.
 
 ### Working on the UI
 
-The interface can be built and reviewed without compiling the Rust side.
+The interface can be built and reviewed without compiling the Rust side at all.
 `npm run preview` swaps the Tauri bridge for fixtures and emits a single
-self-contained `ui/dist-mock/preview.html` that opens straight from disk:
+self-contained HTML file:
 
 ```sh
 cd ui && npm run preview && open dist-mock/preview.html
@@ -92,18 +189,19 @@ cd ui && npm run preview && open dist-mock/preview.html
 
 Design notes live at the top of `ui/src/app.css`.
 
-The app is shipped **unsigned**, so the first launch needs a bypass:
-right-click → Open on macOS, or `xattr -d com.apple.quarantine` on the
-`.app`.
+### What gets installed where
 
-Then build the index from transcripts already on disk:
+Nothing runs in the background and no daemon is installed. ccmon writes only to
+its own directory — `ccmon doctor` prints the path:
 
-```sh
-ccmon reindex
-ccmon doctor
-```
+| Platform | Data directory |
+|---|---|
+| macOS | `~/Library/Application Support/ccmon/` |
+| Linux | `$XDG_DATA_HOME/ccmon/` or `~/.local/share/ccmon/` |
+| Windows | `%LOCALAPPDATA%\ccmon\` |
 
-No daemon is installed and nothing runs in the background.
+To uninstall: `cargo uninstall ccmon-cli`, delete that directory, and delete
+the app bundle. Nothing else is touched.
 
 ---
 

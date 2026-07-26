@@ -24,9 +24,12 @@ cargo run -p ccmon-cli -- doctor
 cargo run -p ccmon-cli -- ls
 ```
 
-The desktop app needs the frontend built first:
+The desktop app needs Node 18+, the Tauri CLI, and the frontend built first.
+On Linux it also needs `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`,
+`librsvg2-dev`, and `patchelf` — see the README for the full list.
 
 ```sh
+cargo install tauri-cli --version "^2" --locked
 cd ui && npm install && cd ..
 cd crates/ccmon-app && cargo tauri dev
 ```

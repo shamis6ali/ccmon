@@ -35,14 +35,26 @@ pub fn run(cfg: &Config) -> Result<()> {
             human_size(file_size(&spool))
         );
     } else {
-        println!("spool         none yet — hooks are not installed (see `ccmon install`, M2)");
+        println!(
+            "spool         none yet — normal. Hooks are not released; live state is read\n\
+             \x20             from Claude Code's own runtime files."
+        );
     }
 
     // --- discovery ---
     let discovery = cfg.all_roots();
     println!();
     if discovery.found.is_empty() {
-        println!("!! No Claude Code roots found. Set claude_roots in config.toml.");
+        let cfg_path = paths::config_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "config.toml".into());
+        println!(
+            "!! No Claude Code data found.\n   \
+             Either Claude Code is not installed on this machine, or it keeps its\n   \
+             data somewhere unusual. If you know the directory — the one containing\n   \
+             `projects/` — add it to {cfg_path}:\n\n     \
+             claude_roots = [\"/path/to/.claude\"]\n"
+        );
     }
     for root in &discovery.found {
         println!(
