@@ -6,6 +6,7 @@
 //! its project.
 
 use ccmon_core::rusqlite;
+use serde_json::json;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -34,24 +35,51 @@ fn init_repo(dir: &Path) {
 }
 
 /// A transcript in the current on-disk format.
+///
+/// Built with `serde_json` rather than string formatting: a Windows path is
+/// full of backslashes, and a backslash is an escape character inside a JSON
+/// string. Interpolating one produces a line that no parser accepts, so the
+/// fixture would silently ingest nothing and every assertion here would fail
+/// for a reason that has nothing to do with the code under test.
 fn transcript(session_id: &str, cwd: &str, title: &str, prompt: &str, edits: &[&str]) -> String {
     let now = Utc::now();
     let started = (now - Duration::minutes(30)).to_rfc3339();
     let ended = (now - Duration::minutes(1)).to_rfc3339();
 
     let mut lines = vec![
-        format!(r#"{{"type":"mode","mode":"normal","sessionId":"{session_id}"}}"#),
-        format!(
-            r#"{{"type":"user","message":{{"role":"user","content":"{prompt}"}},"timestamp":"{started}","cwd":"{cwd}","sessionId":"{session_id}","gitBranch":"main"}}"#
-        ),
-        format!(r#"{{"type":"ai-title","aiTitle":"{title}","sessionId":"{session_id}"}}"#),
+        json!({"type": "mode", "mode": "normal", "sessionId": session_id}),
+        json!({
+            "type": "user",
+            "message": {"role": "user", "content": prompt},
+            "timestamp": started,
+            "cwd": cwd,
+            "sessionId": session_id,
+            "gitBranch": "main",
+        }),
+        json!({"type": "ai-title", "aiTitle": title, "sessionId": session_id}),
     ];
     for path in edits {
-        lines.push(format!(
-            r#"{{"type":"assistant","timestamp":"{ended}","sessionId":"{session_id}","cwd":"{cwd}","message":{{"role":"assistant","content":[{{"type":"tool_use","name":"Edit","input":{{"file_path":"{path}"}}}}]}}}}"#
-        ));
+        lines.push(json!({
+            "type": "assistant",
+            "timestamp": ended,
+            "sessionId": session_id,
+            "cwd": cwd,
+            "message": {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "name": "Edit",
+                    "input": {"file_path": path},
+                }],
+            },
+        }));
     }
-    lines.join("\n")
+
+    lines
+        .iter()
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 struct Fixture {

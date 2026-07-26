@@ -30,7 +30,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -67,8 +67,8 @@ jobs:
     name: frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -95,14 +95,16 @@ jobs:
     name: supply chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny
 
-      # Advisories, licence policy, and the ban on HTTP clients that keeps the
-      # "no network calls" promise a build-time invariant rather than a claim.
+      # Advisories, licence policy, and source allow-listing. The "no network
+      # calls" promise is enforced by the no-network job below, which can scope
+      # itself to the CLI; a workspace-wide ban cannot, because the desktop app
+      # links a webview.
       - name: cargo deny
         run: cargo deny --workspace check
 
@@ -110,7 +112,7 @@ jobs:
     name: no network in the CLI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
