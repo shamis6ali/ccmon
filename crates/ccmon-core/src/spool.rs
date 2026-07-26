@@ -3,8 +3,9 @@
 //!
 //! There is no daemon. The hook appends one line and exits; readers drain the
 //! spool into SQLite on demand before answering. Ingest tracks
-//! `(file_identity, byte_offset)` — inode on Unix, creation time on Windows —
-//! so rotation never causes a re-ingest or a skipped event.
+//! `(file_identity, byte_offset)` — the inode on Unix, a hash of the first line
+//! elsewhere — so rotation never causes a re-ingest or a skipped event. See
+//! `file_identity` for why creation time is the wrong answer on Windows.
 
 use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
