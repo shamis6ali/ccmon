@@ -1,0 +1,662 @@
+/* ccmon — instrument panel
+ *
+ * A status board for something you already watch in a terminal, so the whole
+ * interface is monospace. Hierarchy comes from weight, tracking, and colour
+ * rather than from a second typeface: on a dense readout, a proportional font
+ * would break the vertical rhythm that makes the list scannable.
+ *
+ * Colour is a signal, never decoration. Each state owns exactly one hue and
+ * nothing else in the interface is allowed to use it, so a glance at the left
+ * rail answers "does anything want me?" before any text is read. Every colour
+ * is paired with a text label — colour alone never carries meaning.
+ *
+ * No webfonts: the app runs under `default-src 'self'` with no network access,
+ * which suits a tool whose entire premise is working offline.
+ */
+
+:root {
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "IBM Plex Mono",
+    "Cascadia Code", "Berkeley Mono", Menlo, Consolas, "DejaVu Sans Mono",
+    monospace;
+
+  /* Deep ink, not black: a true #000 makes the hairlines float. */
+  --ink-0: #08090b;
+  --ink-1: #0d0f13;
+  --ink-2: #14171c;
+  --ink-3: #1b1f26;
+  --line: #1e242c;
+  --line-2: #2b323c;
+
+  --text: #dfe5ec;
+  --dim: #8c95a1;
+  --faint: #59616b;
+
+  --sig-needs-action: #f5a65b;
+  --sig-working: #5bd5c8;
+  --sig-needs-review: #7bd88f;
+  --sig-idle: #6e7883;
+  --sig-dead: #e8657a;
+  --sig-ended: #495159;
+
+  --focus: #5bd5c8;
+
+  --rule: 1px solid var(--line);
+  --pad: 14px;
+  --tight: 0.04em;
+  --wide: 0.16em;
+}
+
+/* Paper telemetry: the same instrument, printed. Structure is identical, only
+   the substrate inverts, so muscle memory survives a theme switch. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --ink-0: #f3f1ec;
+    --ink-1: #fbfaf7;
+    --ink-2: #efece5;
+    --ink-3: #e6e2d9;
+    --line: #dcd7cc;
+    --line-2: #c6c0b3;
+
+    --text: #14161a;
+    --dim: #565d66;
+    --faint: #878e97;
+
+    --sig-needs-action: #a85708;
+    --sig-working: #0b7168;
+    --sig-needs-review: #2c7440;
+    --sig-idle: #6b7280;
+    --sig-dead: #a81d38;
+    --sig-ended: #9aa1a9;
+
+    --focus: #0b7168;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--ink-0);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Faint horizontal ruling, like a phosphor readout. Sub-perceptual on its own;
+   it exists to keep large dark areas from reading as dead space. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.013) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+@media (prefers-color-scheme: light) {
+  body::after {
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.012) 0 1px,
+      transparent 1px 3px
+    );
+  }
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+::selection {
+  background: var(--sig-working);
+  color: var(--ink-0);
+}
+
+:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ── controls ─────────────────────────────────────────────────────────── */
+
+button {
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: var(--tight);
+  color: var(--dim);
+  background: transparent;
+  border: var(--rule);
+  border-radius: 2px;
+  padding: 4px 9px;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s;
+}
+
+button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line-2);
+  background: var(--ink-2);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+button.primary {
+  color: var(--ink-0);
+  background: var(--sig-working);
+  border-color: var(--sig-working);
+  font-weight: 700;
+  letter-spacing: var(--wide);
+  text-transform: uppercase;
+  padding: 5px 14px;
+}
+
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+  background: var(--sig-working);
+  color: var(--ink-0);
+}
+
+button.bare {
+  border-color: transparent;
+  padding: 3px 6px;
+}
+
+button.bare:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--ink-2);
+}
+
+select,
+input[type="text"],
+input[type="date"],
+input[type="number"] {
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--ink-1);
+  border: var(--rule);
+  border-radius: 2px;
+  padding: 4px 7px;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  select,
+  input[type="text"],
+  input[type="date"],
+  input[type="number"] {
+    color-scheme: light;
+  }
+}
+
+input[type="text"]::placeholder {
+  color: var(--faint);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--sig-working);
+  width: 14px;
+  height: 14px;
+}
+
+/* ── header ───────────────────────────────────────────────────────────── */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 var(--pad);
+  height: 38px;
+  flex: 0 0 auto;
+  border-bottom: var(--rule);
+  background: var(--ink-1);
+}
+
+.bar .gap {
+  flex: 1;
+}
+
+.tab {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 10px 11px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: var(--wide);
+  text-transform: uppercase;
+  color: var(--faint);
+  background: transparent;
+}
+
+.tab:hover:not(:disabled) {
+  background: transparent;
+  color: var(--dim);
+  border-color: transparent;
+  border-bottom-color: var(--line-2);
+}
+
+.tab.on {
+  color: var(--text);
+  border-bottom-color: var(--sig-working);
+  background: transparent;
+}
+
+.tab .badge {
+  color: var(--sig-needs-action);
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+/* Live readout: seconds since the last refresh, with a blinking cursor. */
+.readout {
+  font-size: 10px;
+  letter-spacing: var(--tight);
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.readout .caret {
+  display: inline-block;
+  width: 5px;
+  height: 9px;
+  margin-left: 5px;
+  vertical-align: -1px;
+  background: var(--sig-working);
+  animation: blink 1.4s steps(1) infinite;
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0.15;
+  }
+}
+
+main {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px var(--pad) 28px;
+}
+
+main::-webkit-scrollbar {
+  width: 9px;
+}
+
+main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+main::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 0;
+}
+
+main::-webkit-scrollbar-thumb:hover {
+  background: var(--line-2);
+}
+
+/* ── group headers ────────────────────────────────────────────────────── */
+
+/* The signature: label, a hairline spanning the remaining width, then a
+   zero-padded count hard against the right edge. */
+.group {
+  margin-bottom: 22px;
+}
+
+.ghead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.ghead .name {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: var(--wide);
+  text-transform: uppercase;
+  color: var(--st, var(--dim));
+}
+
+.ghead .rule {
+  flex: 1;
+  height: 0;
+  border-bottom: var(--rule);
+}
+
+.ghead .n {
+  font-size: 10px;
+  letter-spacing: var(--tight);
+  color: var(--faint);
+}
+
+/* ── rows ─────────────────────────────────────────────────────────────── */
+
+.row {
+  position: relative;
+  padding: 7px 10px 8px 14px;
+  border-left: 2px solid var(--st);
+  background: linear-gradient(90deg, var(--ink-1), transparent 70%);
+  animation: rise 0.26s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+.row + .row {
+  margin-top: 2px;
+}
+
+.row:hover {
+  background: linear-gradient(90deg, var(--ink-2), transparent 80%);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    animation: none;
+  }
+  .readout .caret,
+  .live {
+    animation: none;
+  }
+}
+
+.line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* The title is the same string Claude Code writes into the terminal window
+   title. It is how the user finds the window, so it gets the most weight. */
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: var(--tight);
+}
+
+.age {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.line2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.dot {
+  color: var(--line-2);
+}
+
+.flag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: var(--wide);
+  text-transform: uppercase;
+  color: var(--st);
+}
+
+.flag.warn {
+  color: var(--sig-needs-action);
+}
+
+.flag.mute {
+  color: var(--faint);
+}
+
+/* A slow pulse marks a session that is genuinely running right now. */
+.live {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--sig-working);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+.ask {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Actions stay hidden until the row is engaged: with 30 sessions on screen, 90
+   buttons would be the loudest thing in the interface. They are taken out of
+   flow so a hidden control reserves no height — otherwise every row carries a
+   band of dead space, which is exactly what a dense readout cannot afford. */
+.acts {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  padding-left: 30px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s;
+  background: linear-gradient(90deg, transparent, var(--ink-2) 38%);
+}
+
+/* Opaque, so row text cannot read through the button interiors. */
+.acts button {
+  background: var(--ink-2);
+}
+
+.acts button:hover:not(:disabled) {
+  background: var(--ink-3);
+}
+
+.row:hover .acts,
+.row:focus-within .acts {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Without hover there is no reveal, so give the controls their own line. */
+@media (hover: none) {
+  .acts {
+    position: static;
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+    margin-top: 6px;
+    padding-left: 0;
+    background: none;
+  }
+}
+
+/* ── report ───────────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: var(--rule);
+}
+
+.sheet {
+  font-size: 11.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-bottom: 20px;
+}
+
+.sheet .l-h1 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: var(--tight);
+  color: var(--text);
+}
+
+.sheet .l-total {
+  color: var(--dim);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: var(--rule);
+}
+
+.sheet .l-project {
+  margin-top: 22px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--sig-working);
+}
+
+.sheet .l-session {
+  margin-top: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sheet .l-ask {
+  color: var(--faint);
+}
+
+.sheet .l-commit {
+  color: var(--dim);
+}
+
+.sheet .l-meta {
+  color: var(--faint);
+}
+
+.sheet .l-none {
+  color: var(--sig-needs-action);
+}
+
+.sheet code {
+  font: inherit;
+  color: var(--sig-needs-review);
+}
+
+.sheet .l-project code {
+  color: var(--dim);
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+/* ── settings ─────────────────────────────────────────────────────────── */
+
+.opt {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 13px 0;
+  border-bottom: var(--rule);
+  max-width: 580px;
+}
+
+.opt .k {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: var(--wide);
+  text-transform: uppercase;
+}
+
+.opt .why {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--faint);
+  max-width: 52ch;
+}
+
+.opt .ctl {
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+/* ── shared ───────────────────────────────────────────────────────────── */
+
+.muted {
+  color: var(--dim);
+}
+
+.faint {
+  color: var(--faint);
+}
+
+.blank {
+  padding: 56px 0;
+  text-align: center;
+  color: var(--faint);
+  font-size: 11.5px;
+  letter-spacing: var(--tight);
+}
+
+.alert {
+  border-left: 2px solid var(--sig-dead);
+  background: linear-gradient(90deg, var(--ink-2), transparent 80%);
+  color: var(--sig-dead);
+  padding: 8px 11px;
+  margin-bottom: 12px;
+  font-size: 11.5px;
+}
+
+.path {
+  font-size: 10.5px;
+  color: var(--faint);
+  word-break: break-all;
+}

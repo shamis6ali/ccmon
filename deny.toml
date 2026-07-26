@@ -1,0 +1,70 @@
+# cargo-deny: advisories, licences, and dependency hygiene.
+#
+#   cargo install cargo-deny --locked
+#   cargo deny --workspace check
+
+[graph]
+all-features = false
+# Evaluate the platforms actually shipped. Without this, cargo-deny reasons
+# over every target at once and reports crates that are never linked anywhere.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+yanked = "deny"
+
+# Security vulnerabilities fail the build. "Unmaintained" only fails for crates
+# this workspace depends on directly, where we can actually do something about
+# it. Tauri transitively pulls in the GTK3 bindings and several unic crates
+# that upstream has archived with no successor: failing CI over a dependency
+# nobody can currently replace trains people to ignore the check, which costs
+# more than it protects.
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+# Permissive licences only. ccmon is Apache-2.0 and must stay redistributable
+# without imposing copyleft obligations on anyone who vendors it.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "MPL-2.0",     # file-level copyleft only; safe to link
+    "BSL-1.0",
+    "OpenSSL",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Duplicate versions are noise in a tree this size, not a defect.
+multiple-versions = "warn"
+wildcards = "deny"
+
+# Note: there is deliberately no ban on HTTP clients here.
+#
+# The "no network calls" promise is about the shipped CLI, and a workspace-wide
+# ban cannot express that: the desktop app links a webview, and Tauri's
+# dependency graph legitimately contains networking crates on some targets even
+# though nothing in ccmon calls them. A ban that has to be suppressed with
+# exceptions documents nothing.
+#
+# The promise is enforced instead by the `no-network` CI job, which asserts
+# that no client crate is reachable from `ccmon-cli` specifically. That check is
+# narrow enough to be both true and meaningful.
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,0 +1,9 @@
+# Contributors and CI use current stable, so formatting and lint results agree.
+#
+# This is deliberately NOT pinned to the MSRV: `rust-version` in Cargo.toml
+# declares the oldest compiler the crate supports, and pinning the toolchain to
+# that floor would force everyone to build with a compiler far older than the
+# dependencies themselves require.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

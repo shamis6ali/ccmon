@@ -1,0 +1,25 @@
+[package]
+name = "ccmon-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core ingest, state derivation, and reporting for ccmon."
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", features = ["serde"] }
+regex = "1.13.1"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sysinfo = "0.36.1"
+thiserror = "2.0.19"
+toml = "1.0.7"
+toml_edit = "0.25.5"
+tracing = "0.1.44"
+
+[dev-dependencies]
+insta = "1.48.0"
+tempfile = "3.27.0"

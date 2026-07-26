@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest something ccmon should do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the **Scope** section of
+        [CONTRIBUTING.md](../../blob/main/CONTRIBUTING.md) first. Issue-tracker
+        integration, a daemon, sync, team features, mobile, telemetry, and LLM
+        calls are all deliberately excluded.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you unable to do today? Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead

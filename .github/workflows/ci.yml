@@ -1,0 +1,126 @@
+name: CI
+
+# The three-platform matrix runs from the first milestone onward, before any
+# artifact is published. It is the canary for #[cfg] and path breakage: without
+# it the first Windows contributor hits a compile error nobody can reproduce.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The desktop app links GTK and WebKit on Linux.
+      - name: Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libssl-dev
+
+      # Several tests shell out to real git and need an identity to commit.
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+          git config --global init.defaultBranch main
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - run: npm ci
+        working-directory: ui
+
+      - name: Build
+        run: npm run build
+        working-directory: ui
+
+      # The mock build is how the interface is reviewed without a Rust
+      # toolchain; if it breaks, that workflow silently rots.
+      - name: Build preview
+        run: npm run preview
+        working-directory: ui
+
+      - name: Audit
+        run: npm audit --audit-level=high
+        working-directory: ui
+
+  supply-chain:
+    name: supply chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      # Advisories, licence policy, and the ban on HTTP clients that keeps the
+      # "no network calls" promise a build-time invariant rather than a claim.
+      - name: cargo deny
+        run: cargo deny --workspace check
+
+  no-network:
+    name: no network in the CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Belt and braces alongside cargo-deny: assert directly that nothing
+      # resembling an HTTP or TLS client is reachable from the shipped CLI.
+      - name: Assert the CLI dependency tree has no client
+        run: |
+          tree=$(cargo tree -p ccmon-cli -e normal)
+          if echo "$tree" | grep -iE '\b(reqwest|hyper|ureq|isahc|curl|surf|native-tls|rustls)\b'; then
+            echo "::error::a network client reached ccmon-cli's dependency tree"
+            exit 1
+          fi
+          echo "clean"

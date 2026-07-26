@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ccmon-core",
+    "crates/ccmon-cli",
+    "crates/ccmon-app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77.2"
+license = "Apache-2.0"
+repository = "https://github.com/shamis6ali/ccmon"
+description = "Monitor Claude Code CLI sessions: live triage and weekly work reports."
+
+[profile.release]
+lto = "thin"
+strip = true

@@ -1,0 +1,8 @@
+/target
+**/*.rs.bk
+*.pdb
+.DS_Store
+ui/dist
+ui/dist-mock
+ui/node_modules
+crates/ccmon-app/gen/schemas
