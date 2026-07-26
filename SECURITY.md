@@ -74,7 +74,20 @@ Consequences worth being deliberate about:
 ## Supply chain
 
 `Cargo.lock` and `package-lock.json` are committed. CI runs `cargo deny` on
-every push, which checks advisories, licences, and duplicate dependencies.
+every push, which checks advisories, licences, and sources.
+
+Known and accepted, with the reasoning recorded in `deny.toml`:
+
+- **RUSTSEC-2024-0429** — unsoundness in `glib`'s `VariantStrIter`. Reached only
+  through Tauri's Linux tray dependency (`tray-icon` → `libappindicator` →
+  `gtk 0.18`), which pins `glib ^0.18` while the fix is in 0.20. It cannot be
+  resolved downstream; it needs Tauri to migrate off the archived GTK3
+  bindings. Linux-only, in an API ccmon never calls.
+- Several **unmaintained** advisories for the GTK3 bindings and `unic-*`
+  crates, reached the same way. `cargo deny` is configured to fail on
+  unmaintained crates this workspace depends on *directly*, where something can
+  actually be done, rather than on transitive dependencies with no available
+  successor.
 
 Released binaries are **unsigned**: no code-signing certificate and no
 notarisation. You will need to bypass Gatekeeper or SmartScreen on first launch.

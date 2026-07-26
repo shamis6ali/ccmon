@@ -24,7 +24,19 @@ yanked = "deny"
 # nobody can currently replace trains people to ignore the check, which costs
 # more than it protects.
 unmaintained = "workspace"
-ignore = []
+
+ignore = [
+    # RUSTSEC-2024-0429: unsoundness in glib's VariantStrIter iterator impls.
+    #
+    # Reached only through tauri -> tray-icon -> libappindicator -> gtk 0.18,
+    # which pins glib ^0.18; the fix landed in 0.20. It cannot be resolved from
+    # here — it needs Tauri to move off the archived GTK3 bindings — and it is
+    # Linux-only, affects an API ccmon never calls, and requires the caller to
+    # misuse the iterator. Listed explicitly so the check stays green
+    # deliberately rather than by accident, and so this reasoning is visible
+    # the next time someone looks.
+    "RUSTSEC-2024-0429",
+]
 
 [licenses]
 # Permissive licences only. ccmon is Apache-2.0 and must stay redistributable
