@@ -194,26 +194,31 @@ pub fn discover_claude_dirs(extra: &[PathBuf]) -> Discovery {
 /// - **Windows verbatim prefixes.** `canonicalize` returns `\\?\C:\…` there,
 ///   while git returns `C:/…`. Canonicalising alone would swap one mismatch
 ///   for another, so the prefix is stripped.
-/// - **Separators.** Git reports forward slashes on Windows; the filesystem
-///   reports backslashes.
+///
+/// Separators are deliberately *not* touched. Git reports forward slashes on
+/// Windows and the filesystem reports backslashes, but `std::path` treats both
+/// as separators there, so comparing components already copes — and rewriting
+/// them would corrupt a path that could not be resolved.
 ///
 /// Everything that compares a file against a project root must pass both sides
 /// through here first. Unresolvable paths are returned unchanged, which is
 /// normal for a file that was edited and later deleted.
 pub fn normalize(path: &str) -> String {
-    let resolved = std::fs::canonicalize(path)
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| path.to_string());
+    // A path that cannot be resolved is returned exactly as recorded. Rewriting
+    // it would be inventing information about a file we could not even find.
+    let Ok(resolved) = std::fs::canonicalize(path) else {
+        return path.to_string();
+    };
+    let resolved = resolved.display().to_string();
 
     #[cfg(windows)]
     {
         // `\\?\C:\x` -> `C:\x`, and UNC `\\?\UNC\srv\share` -> `\\srv\share`.
-        let stripped = resolved
+        resolved
             .strip_prefix(r"\\?\UNC\")
             .map(|rest| format!(r"\\{rest}"))
             .or_else(|| resolved.strip_prefix(r"\\?\").map(str::to_string))
-            .unwrap_or(resolved);
-        stripped.replace('/', "\\")
+            .unwrap_or(resolved)
     }
     #[cfg(not(windows))]
     {
@@ -336,8 +341,11 @@ mod tests {
     #[test]
     fn normalize_leaves_an_unresolvable_path_alone() {
         // Edited then deleted is normal; it must not vanish from the report.
-        let missing = "/definitely/not/here/deleted.rs";
-        assert_eq!(normalize(missing), missing);
+        // Byte-for-byte what was recorded: rewriting a path we could not even
+        // resolve would be inventing information about it.
+        for missing in ["/definitely/not/here/deleted.rs", r"C:\nope\gone.rs"] {
+            assert_eq!(normalize(missing), missing);
+        }
     }
 
     #[test]

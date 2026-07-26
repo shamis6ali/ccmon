@@ -857,18 +857,27 @@ mod tests {
 
         let via_link = link.join("src").join("cart.ts");
         let resolved = crate::paths::normalize(via_link.to_str().unwrap());
+        // Both sides through the same normaliser. Comparing against a raw
+        // `canonicalize` would fail on Windows, where it keeps the `\\?\`
+        // verbatim prefix that `normalize` strips.
+        let root = crate::paths::normalize(real.to_str().unwrap());
 
         assert!(
-            resolved.starts_with(std::fs::canonicalize(&real).unwrap().to_str().unwrap()),
-            "resolved {resolved} should sit under the real repo root"
+            crate::paths::is_inside(&resolved, &root),
+            "{resolved} should sit inside {root}"
+        );
+        assert_eq!(
+            crate::paths::relative_within(&resolved, &root).as_deref(),
+            Some("src/cart.ts")
         );
     }
 
     #[test]
     fn a_missing_file_keeps_the_path_it_was_recorded_with() {
         // Edited then deleted is normal; it must not vanish from the report.
-        let p = "/definitely/not/here/deleted.rs";
-        assert_eq!(crate::paths::normalize(p), p);
+        for p in ["/definitely/not/here/deleted.rs", r"C:\nope\gone.rs"] {
+            assert_eq!(crate::paths::normalize(p), p);
+        }
     }
 
     #[test]
